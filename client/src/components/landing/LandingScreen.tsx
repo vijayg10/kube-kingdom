@@ -21,7 +21,7 @@ export function LandingScreen({
   return (
     <div style={wrap}>
       <div style={panel}>
-        <h1 style={title}>Kube Kingdom</h1>
+        <img src="/kube-kingdom.png" alt="Kube Kingdom" style={logo} />
         <p style={subtitle}>Your cluster, rendered as a living medieval city.</p>
 
         {!showForm ? (
@@ -78,18 +78,18 @@ const wrap: React.CSSProperties = {
 const panel: React.CSSProperties = {
   textAlign: 'center',
   padding: '3rem 3.5rem',
-  background: 'rgba(20,13,6,0.55)',
+  background: '#f8f1df',
   border: '2px solid #b9a05a',
   borderRadius: 14,
   boxShadow: '0 12px 60px rgba(0,0,0,0.6)',
   maxWidth: 560,
+  color: '#2b2014',
 };
 
-const title: React.CSSProperties = {
-  fontSize: '4rem',
-  margin: 0,
-  letterSpacing: '0.12em',
-  textShadow: '0 3px 0 #5a4426, 0 6px 18px rgba(0,0,0,0.6)',
+const logo: React.CSSProperties = {
+  width: '100%',
+  maxWidth: 380,
+  marginBottom: 8,
 };
 
 const subtitle: React.CSSProperties = { opacity: 0.8, marginTop: 8, marginBottom: 28 };
@@ -135,13 +135,13 @@ const baseBtn: React.CSSProperties = {
 
 const primaryBtn: React.CSSProperties = {
   ...baseBtn,
-  color: '#2b2014',
-  background: '#e8d9b5',
+  color: '#e8d9b5',
+  background: '#2b2014',
 };
 
 const secondaryBtn: React.CSSProperties = {
   ...baseBtn,
-  color: '#e8d9b5',
+  color: '#2b2014',
   background: 'transparent',
 };
 
