@@ -1,4 +1,4 @@
-/* Shared ESLint config for the Kube City monorepo (client + server). */
+/* Shared ESLint config for the Kube Kingdom monorepo (client + server). */
 module.exports = {
   root: true,
   env: { browser: true, node: true, es2022: true },
