@@ -1,6 +1,6 @@
 # Kube Kingdom
 
-![Kube Kingdom](assets/images/kube-kingdom.png)
+![Kube Kingdom](assets/images/kube-kingdom_transparentbg.png)
 
 Your Kubernetes cluster, rendered as a living isometric medieval city.
 
