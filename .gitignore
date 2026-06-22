@@ -29,8 +29,6 @@ Thumbs.db
 .vite/
 *.tsbuildinfo
 
-*.png
-
 *-IGNORE
 
 .playwright-mcp/
