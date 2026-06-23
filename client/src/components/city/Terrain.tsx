@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import * as THREE from 'three';
 import { useTexture } from '@react-three/drei';
+import { useFrame } from '@react-three/fiber';
 import type { IslandLayout, TerrainLayout, Vec3 } from '../../types/layout';
 
 const ISLAND_DEPTH = 2.5;
@@ -41,20 +42,100 @@ function scaleVertices(vertices: Vec3[], center: Vec3, scale: number): Vec3[] {
   }));
 }
 
-/**
- * Cliff segment descriptors. BoxGeometry is used (not PlaneGeometry) because
- * vertical PlaneGeometry meshes corrupt N8AO's depth pre-pass on fresh load.
- * z-negation matches ShapeGeometry's rotateX(-π/2): rendered_z = -p.z.
- */
-function cliffSegments(vertices: Vec3[]) {
-  return vertices.map((a, i) => {
-    const b = vertices[(i + 1) % vertices.length];
-    const ax = a.x, az = -a.z;
-    const bx = b.x, bz = -b.z;
-    const len = Math.max(Math.hypot(bx - ax, bz - az), 0.01);
-    const angle = Math.atan2(bz - az, bx - ax);
-    return { cx: (ax + bx) / 2, cz: (az + bz) / 2, len, angle };
+const SHORE_OUT  = 8.8;  // horizontal distance the slope extends outward
+const SHORE_TILE = 3.0;  // world units per texture tile on the shore
+
+// Single continuous ring geometry for the island shore — no per-segment seams.
+// Top ring sits at y=0 (shore level); bottom ring is pushed outward + downward.
+function shoreGeometry(vertices: Vec3[], center: Vec3): THREE.BufferGeometry {
+  const n = vertices.length;
+  const BOT_Y    = -(ISLAND_DEPTH + 0.4);
+  const slopeLen = Math.hypot(SHORE_OUT, ISLAND_DEPTH + 0.4); // real diagonal length
+  const vMax     = slopeLen / SHORE_TILE;
+
+  const pos = new Float32Array(n * 2 * 3);
+  const uvs = new Float32Array(n * 2 * 2);
+  const idx: number[] = [];
+
+  let perim = 0;
+  const cum: number[] = [0];
+  for (let i = 0; i < n; i++) {
+    const a = vertices[i], b = vertices[(i + 1) % n];
+    perim += Math.hypot(b.x - a.x, b.z - a.z);
+    cum.push(perim);
+  }
+
+  for (let i = 0; i < n; i++) {
+    const v = vertices[i];
+    const wx = v.x, wz = -v.z;
+    const dx = wx - center.x, dz = wz - (-center.z);
+    const dl = Math.hypot(dx, dz) || 1;
+    const ox = dx / dl, oz = dz / dl;
+    const u = cum[i] / SHORE_TILE; // world-distance-based U — same scale as V
+
+    pos[i * 3]     = wx; pos[i * 3 + 1] = 0.05; pos[i * 3 + 2] = wz;
+    uvs[i * 2]     = u;  uvs[i * 2 + 1] = 0;
+
+    const b = n + i;
+    pos[b * 3]     = wx + ox * SHORE_OUT;
+    pos[b * 3 + 1] = BOT_Y;
+    pos[b * 3 + 2] = wz + oz * SHORE_OUT;
+    uvs[b * 2]     = u; uvs[b * 2 + 1] = vMax;
+  }
+
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    idx.push(i, n + i, j);
+    idx.push(n + i, n + j, j);
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geom.setAttribute('uv',       new THREE.Float32BufferAttribute(uvs, 2));
+  geom.setIndex(idx);
+  geom.computeVertexNormals();
+  return geom;
+}
+
+function Ocean({ size, y }: { size: number; y: number }) {
+  const noiseBase = useTexture('/textures/T_Noise_Terrain.png');
+
+  // Two clones scroll independently — one for bump, one for roughness variation.
+  const [bumpTex, roughTex] = useMemo(() => {
+    const a = noiseBase.clone();
+    const b = noiseBase.clone();
+    [a, b].forEach((t) => {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(14, 14);
+      t.needsUpdate = true;
+    });
+    return [a, b];
+  }, [noiseBase]);
+
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
+    bumpTex.offset.set( t * 0.022,  t * 0.014);
+    roughTex.offset.set(-t * 0.016,  t * 0.021);
   });
+
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, y, 0]} receiveShadow>
+      <planeGeometry args={[size, size, 1, 1]} />
+      <meshPhysicalMaterial
+        color="#1e5a80"
+        bumpMap={bumpTex}
+        bumpScale={5.5}
+        roughnessMap={roughTex}
+        roughness={0.02}
+        metalness={0.0}
+        reflectivity={1.0}
+        envMapIntensity={2.5}
+        ior={1.33}
+        transparent
+        opacity={0.94}
+      />
+    </mesh>
+  );
 }
 
 function IslandMesh({ island }: { island: IslandLayout }) {
@@ -66,20 +147,25 @@ function IslandMesh({ island }: { island: IslandLayout }) {
     [island.vertices, island.center],
   );
 
-  const outerSegs = useMemo(() => cliffSegments(island.vertices), [island.vertices]);
-
-  const cliffColor = island.isNodePlatform ? '#585450' : '#706a62';
+  const shoreGeom = useMemo(
+    () => shoreGeometry(island.vertices, island.center),
+    [island.vertices, island.center],
+  );
 
   const grassTex = useTexture('/textures/T_Grass.png');
+  const shoreTex = useTexture('/textures/T_Sand.png');
+
   useMemo(() => {
     grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
     grassTex.needsUpdate = true;
-  }, [grassTex]);
+    shoreTex.wrapS = shoreTex.wrapT = THREE.RepeatWrapping;
+    shoreTex.needsUpdate = true;
+  }, [grassTex, shoreTex]);
 
   return (
     <>
       {/* Stacked grass rings — each smaller and higher, giving a hill silhouette */}
-      {TERRACES.map(({ y, shade }, idx) => (
+      {TERRACES.map(({ y }, idx) => (
         <mesh key={idx} geometry={terraceCaps[idx]} position={[0, y + 0.01, 0]} receiveShadow castShadow>
           <meshStandardMaterial
             map={island.isNodePlatform ? undefined : grassTex}
@@ -89,19 +175,15 @@ function IslandMesh({ island }: { island: IslandLayout }) {
         </mesh>
       ))}
 
-      {/* Cliff face at island perimeter — BoxGeometry segments (N8AO safe) */}
-      {outerSegs.map((s, i) => (
-        <mesh
-          key={i}
-          position={[s.cx, -ISLAND_DEPTH / 2, s.cz]}
-          rotation={[0, -s.angle, 0]}
-          castShadow
-          receiveShadow
-        >
-          <boxGeometry args={[s.len, ISLAND_DEPTH, 0.3]} />
-          <meshStandardMaterial color={cliffColor} roughness={0.9} />
-        </mesh>
-      ))}
+      {/* Continuous shore ring — single mesh, no per-segment joints */}
+      <mesh geometry={shoreGeom} receiveShadow castShadow>
+        <meshStandardMaterial
+          map={island.isNodePlatform ? undefined : shoreTex}
+          color={island.isNodePlatform ? '#585450' : '#ffffff'}
+          roughness={0.92}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
     </>
   );
 }
@@ -112,16 +194,7 @@ export function Terrain({ terrain }: { terrain: TerrainLayout }) {
 
   return (
     <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -(ISLAND_DEPTH + 0.15), 0]} receiveShadow>
-        <planeGeometry args={[oceanSize, oceanSize]} />
-        <meshStandardMaterial
-          color="#2a5f78"
-          roughness={0.2}
-          metalness={0.12}
-          transparent
-          opacity={0.93}
-        />
-      </mesh>
+      <Ocean size={oceanSize} y={-(ISLAND_DEPTH + 0.15)} />
 
       {islands.map((island) => (
         <IslandMesh key={island.nodeId ?? island.namespace} island={island} />
