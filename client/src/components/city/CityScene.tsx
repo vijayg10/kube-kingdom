@@ -7,7 +7,6 @@ import {
   N8AO,
   SMAA,
   Vignette,
-  DepthOfField,
   HueSaturation,
   BrightnessContrast,
 } from '@react-three/postprocessing';
@@ -38,11 +37,10 @@ function PostFX() {
   return (
     <EffectComposer multisampling={0}>
       <N8AO halfRes aoRadius={3.5} intensity={1.5} distanceFalloff={1} />
-      <DepthOfField focusDistance={0.04} focalLength={0.08} bokehScale={1.8} height={480} />
-      <HueSaturation saturation={0.2} />
-      <BrightnessContrast brightness={0.015} contrast={0.13} />
+      <HueSaturation saturation={0.12} />
+      <BrightnessContrast brightness={0.04} contrast={0.1} />
       <SMAA />
-      <Vignette eskil={false} offset={0.16} darkness={0.6} />
+      <Vignette eskil={false} offset={0.22} darkness={0.32} />
     </EffectComposer>
   );
 }

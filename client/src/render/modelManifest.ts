@@ -40,5 +40,5 @@ export const modelManifest: ModelManifest = {
   enabled: true,
   node: { url: '/models/medieval/Bell_Tower.glb', scale: 3, yOffset: 0, rotationY: 0 },
   house: { url: '/models/medieval/House_1.glb', scale: 1.4, yOffset: 0, rotationY: 0 },
-  tree: undefined, // no tree in this pack → procedural trees
+  tree: { url: '/models/nature/CommonTree_1.gltf', scale: 1.0, yOffset: 0, rotationY: 0 },
 };

@@ -1,14 +1,60 @@
 import { useEffect, useRef } from 'react';
+import { useGLTF, Clone } from '@react-three/drei';
 import * as THREE from 'three';
 import type { Vec3 } from '../../../types/layout';
 import { hashString, mulberry32 } from '../../../layout/seededRandom';
+import { modelManifest } from '../../../render/modelManifest';
 
-/**
- * Low-poly trees as two separate InstancedMeshes (trunk + foliage).
- * Uses CylinderGeometry + ConeGeometry individually — no mergeGeometries
- * (which produced a raw BufferGeometry that was suspected to cause N8AO issues;
- * the actual N8AO fix is the deferred PostFX Suspense pattern in CityScene.tsx).
- */
+const TREE_VARIANTS = [
+  '/models/nature/CommonTree_1.gltf',
+  '/models/nature/CommonTree_2.gltf',
+  '/models/nature/CommonTree_3.gltf',
+  '/models/nature/CommonTree_4.gltf',
+  '/models/nature/CommonTree_5.gltf',
+  '/models/nature/Pine_1.gltf',
+  '/models/nature/Pine_2.gltf',
+  '/models/nature/Pine_3.gltf',
+  '/models/nature/Pine_4.gltf',
+  '/models/nature/Pine_5.gltf',
+];
+
+// Preload all variants up front so they're cached before first render.
+TREE_VARIANTS.forEach((url) => useGLTF.preload(url));
+
+function treeVariant(p: Vec3): string {
+  const idx = hashString(`tree:${p.x.toFixed(1)},${p.z.toFixed(1)}`) % TREE_VARIANTS.length;
+  return TREE_VARIANTS[idx];
+}
+
+function treeScale(p: Vec3): number {
+  const rng = mulberry32(hashString(`treescale:${p.x.toFixed(1)},${p.z.toFixed(1)}`));
+  return 0.8 + rng() * 0.6;
+}
+
+function treeRotation(p: Vec3): number {
+  const rng = mulberry32(hashString(`treery:${p.x.toFixed(1)},${p.z.toFixed(1)}`));
+  return rng() * Math.PI * 2;
+}
+
+/** Single model tree — loads from cache via Clone. */
+function ModelTree({ position }: { position: Vec3 }) {
+  const url = treeVariant(position);
+  const { scene } = useGLTF(url);
+  const scale = treeScale(position);
+  const rotY = treeRotation(position);
+  return (
+    <Clone
+      object={scene}
+      position={[position.x, position.y ?? 0, position.z]}
+      scale={scale}
+      rotation={[0, rotY, 0]}
+      castShadow
+      receiveShadow
+    />
+  );
+}
+
+// ── Procedural fallback (unchanged from original) ────────────────────────────
 
 const _d = new THREE.Object3D();
 
@@ -21,7 +67,7 @@ foliageGeom.translate(0, 1.7, 0);
 const foliageTipGeom = new THREE.ConeGeometry(0.7, 1.2, 7);
 foliageTipGeom.translate(0, 2.6, 0);
 
-export function Trees({ positions }: { positions: Vec3[] }) {
+function ProceduralTrees({ positions }: { positions: Vec3[] }) {
   const trunkRef = useRef<THREE.InstancedMesh>(null);
   const foliageRef = useRef<THREE.InstancedMesh>(null);
   const tipRef = useRef<THREE.InstancedMesh>(null);
@@ -71,6 +117,24 @@ export function Trees({ positions }: { positions: Vec3[] }) {
       </instancedMesh>
     </>
   );
+}
+
+// ── Public export ─────────────────────────────────────────────────────────────
+
+export function Trees({ positions }: { positions: Vec3[] }) {
+  if (positions.length === 0) return null;
+
+  if (modelManifest.enabled && modelManifest.tree) {
+    return (
+      <>
+        {positions.map((p, i) => (
+          <ModelTree key={i} position={p} />
+        ))}
+      </>
+    );
+  }
+
+  return <ProceduralTrees positions={positions} />;
 }
 
 export default Trees;

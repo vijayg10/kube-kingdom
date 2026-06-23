@@ -96,6 +96,7 @@ export interface PropsLayout {
   trees: Vec3[];
   lamps: Vec3[];
   decor: DecorItem[];
+  groundCover: Vec3[];
 }
 
 export interface CityLayout {

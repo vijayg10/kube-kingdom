@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import * as THREE from 'three';
+import { useTexture } from '@react-three/drei';
 import type { IslandLayout, TerrainLayout, Vec3 } from '../../types/layout';
 
 const ISLAND_DEPTH = 2.5;
@@ -12,12 +13,23 @@ const TERRACES = [
   { scale: 0.37, y: 1.30, shade: '#3f9428' }, // hilltop
 ] as const;
 
+const GRASS_TILE = 3.5; // world units per texture tile
+
 function polygonGeometry(vertices: Vec3[]): THREE.BufferGeometry {
   const shape = new THREE.Shape();
   vertices.forEach((p, i) => (i === 0 ? shape.moveTo(p.x, p.z) : shape.lineTo(p.x, p.z)));
   shape.closePath();
   const geom = new THREE.ShapeGeometry(shape);
   geom.rotateX(-Math.PI / 2);
+  // Replace default (0-1 normalised) UVs with world-space XZ so the grass
+  // texture tiles at a fixed real-world scale across all three terrace rings.
+  const pos = geom.attributes.position as THREE.BufferAttribute;
+  const uv  = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    uv[i * 2]     =  pos.getX(i) / GRASS_TILE;
+    uv[i * 2 + 1] = -pos.getZ(i) / GRASS_TILE;
+  }
+  geom.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   return geom;
 }
 
@@ -56,14 +68,24 @@ function IslandMesh({ island }: { island: IslandLayout }) {
 
   const outerSegs = useMemo(() => cliffSegments(island.vertices), [island.vertices]);
 
-  const cliffColor = island.isNodePlatform ? '#6a5a4a' : '#8a6a48';
+  const cliffColor = island.isNodePlatform ? '#585450' : '#706a62';
+
+  const grassTex = useTexture('/textures/T_Grass.png');
+  useMemo(() => {
+    grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
+    grassTex.needsUpdate = true;
+  }, [grassTex]);
 
   return (
     <>
       {/* Stacked grass rings — each smaller and higher, giving a hill silhouette */}
       {TERRACES.map(({ y, shade }, idx) => (
         <mesh key={idx} geometry={terraceCaps[idx]} position={[0, y + 0.01, 0]} receiveShadow castShadow>
-          <meshStandardMaterial color={island.isNodePlatform ? '#5a7050' : shade} roughness={1} />
+          <meshStandardMaterial
+            map={island.isNodePlatform ? undefined : grassTex}
+            color={island.isNodePlatform ? '#5a7050' : '#ffffff'}
+            roughness={0.88}
+          />
         </mesh>
       ))}
 

@@ -12,9 +12,7 @@ import { branchCurve } from '../../layout/roadCurves';
  */
 
 const ROAD_SEGMENTS = 10;
-// Texture tiling: stones should be ~1 world unit across, UVs span the full
-// bounding box of each shape, so a repeat of ~3 gives readable cobble scale.
-const TEX_REPEAT = 3;
+const ROAD_TILE = 8.5; // world units per texture tile
 
 function buildRoadGeometry(road: RoadLayout, posById: Map<string, Vec3>): THREE.BufferGeometry | null {
   const anchor = road.pathPoints[0];
@@ -58,6 +56,15 @@ function buildRoadGeometry(road: RoadLayout, posById: Map<string, Vec3>): THREE.
 
   const geom = new THREE.ShapeGeometry(shapes);
   geom.rotateX(-Math.PI / 2);
+  // World-space UVs so the texture tiles at a consistent real-world scale
+  // regardless of shape bounding box size (same technique as terrain grass).
+  const pos = geom.attributes.position as THREE.BufferAttribute;
+  const uv = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    uv[i * 2]     =  pos.getX(i) / ROAD_TILE;
+    uv[i * 2 + 1] = -pos.getZ(i) / ROAD_TILE;
+  }
+  geom.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   return geom;
 }
 
@@ -66,24 +73,13 @@ function RoadsInner({
 }: {
   geometries: { uid: string; geom: THREE.BufferGeometry }[];
 }) {
-  const [colorMap, normalMap, roughMap] = useTexture([
-    '/textures/T_UnevenBrick_BaseColor.png',
-    '/textures/T_UnevenBrick_Normal.png',
-    '/textures/T_UnevenBrick_Roughness.png',
-  ]);
+  const pathMap = useTexture('/textures/T_Path.png');
 
   const roadMaterial = useMemo(() => {
-    [colorMap, normalMap, roughMap].forEach((t) => {
-      t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      t.repeat.set(TEX_REPEAT, TEX_REPEAT);
-    });
-    return new THREE.MeshStandardMaterial({
-      map: colorMap,
-      normalMap,
-      roughnessMap: roughMap,
-      roughness: 0.92,
-    });
-  }, [colorMap, normalMap, roughMap]);
+    pathMap.wrapS = pathMap.wrapT = THREE.RepeatWrapping;
+    pathMap.needsUpdate = true;
+    return new THREE.MeshBasicMaterial({ map: pathMap });
+  }, [pathMap]);
 
   return (
     <>

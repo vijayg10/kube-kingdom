@@ -9,6 +9,7 @@ import { PodEffects } from './effects/PodEffects';
 import { Traffic } from './Traffic';
 import { Incident } from './effects/Incident';
 import { Trees } from './props/Trees';
+import { GroundCover } from './props/GroundCover';
 import { Lamps } from './props/Lamps';
 import { CityProps } from './props/CityProps';
 import { CityGates } from './extended/CityGate';
@@ -34,6 +35,7 @@ export function CityWorld() {
       <Terrain terrain={layout.terrain} />
       <Districts districts={layout.districts} />
       <Trees positions={layout.props.trees} />
+      <GroundCover positions={layout.props.groundCover} />
       <Lamps positions={layout.props.lamps} />
       <CityProps decor={layout.props.decor} />
       <Roads roads={layout.roads} buildings={layout.buildings} />

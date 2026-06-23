@@ -292,6 +292,7 @@ function buildProps(
   const trees: Vec3[] = [];
   const lamps: Vec3[] = [];
   const decor: DecorItem[] = [];
+  const groundCover: Vec3[] = [];
 
   const addDecor = (model: string, pos: Vec3, rotationY: number) =>
     decor.push({ model, position: pos, rotationY, scale: DECOR_SCALE[model] ?? 2 });
@@ -389,7 +390,19 @@ function buildProps(
     }
   }
 
-  return { trees, lamps, decor };
+  // Dense ground cover (grass, bushes, plants) scattered across each island.
+  for (const d of districts) {
+    const islandR = d.radius * 1.28;
+    const rng = mulberry32(hashString('gc:' + d.namespace));
+    const count = Math.floor(d.radius * 4);
+    for (let i = 0; i < count; i++) {
+      const a = rng() * Math.PI * 2;
+      const r = rng() * islandR * 0.95;
+      groundCover.push(v3(d.center.x + Math.cos(a) * r, 0, d.center.z + Math.sin(a) * r));
+    }
+  }
+
+  return { trees, lamps, decor, groundCover };
 }
 
 /** Pods a service selects, via label-selector match (FR-026). */
