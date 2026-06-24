@@ -55,10 +55,10 @@ const SHORE_TILE = 3.0;  // world units per texture tile on the shore
 
 // Single continuous ring geometry for the island shore — no per-segment seams.
 // Top ring sits at y=0 (shore level); bottom ring is pushed outward + downward.
-function shoreGeometry(vertices: Vec3[], center: Vec3): THREE.BufferGeometry {
+function shoreGeometry(vertices: Vec3[], center: Vec3, shoreOut = SHORE_OUT): THREE.BufferGeometry {
   const n = vertices.length;
   const BOT_Y    = -(ISLAND_DEPTH + 0.4);
-  const slopeLen = Math.hypot(SHORE_OUT, ISLAND_DEPTH + 0.4); // real diagonal length
+  const slopeLen = Math.hypot(shoreOut, ISLAND_DEPTH + 0.4);
   const vMax     = slopeLen / SHORE_TILE;
 
   const pos = new Float32Array(n * 2 * 3);
@@ -85,7 +85,7 @@ function shoreGeometry(vertices: Vec3[], center: Vec3): THREE.BufferGeometry {
     uvs[i * 2]     = u;  uvs[i * 2 + 1] = 0;
 
     const b = n + i;
-    pos[b * 3]     = wx + ox * SHORE_OUT;
+    pos[b * 3]     = wx + ox * shoreOut;
     pos[b * 3 + 1] = BOT_Y;
     pos[b * 3 + 2] = wz + oz * SHORE_OUT;
     uvs[b * 2]     = u; uvs[b * 2 + 1] = vMax;
@@ -160,19 +160,23 @@ function IslandMesh({ island }: { island: IslandLayout }) {
   );
 
   const shoreGeom = useMemo(
-    () => shoreGeometry(smoothed, island.center),
-    [smoothed, island.center],
+    () => shoreGeometry(smoothed, island.center, island.isNodePlatform ? 3.5 : SHORE_OUT),
+    [smoothed, island.center, island.isNodePlatform],
   );
 
   const grassTex = useTexture('/textures/T_Grass.png');
   const shoreTex = useTexture('/textures/T_Sand.png');
+  const rockTex  = useTexture('/textures/T_UnevenBrick_BaseColor.png');
 
   useMemo(() => {
     grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
     grassTex.needsUpdate = true;
     shoreTex.wrapS = shoreTex.wrapT = THREE.RepeatWrapping;
     shoreTex.needsUpdate = true;
-  }, [grassTex, shoreTex]);
+    rockTex.wrapS = rockTex.wrapT = THREE.RepeatWrapping;
+    rockTex.repeat.set(2, 2);
+    rockTex.needsUpdate = true;
+  }, [grassTex, shoreTex, rockTex]);
 
   return (
     <>
@@ -180,9 +184,9 @@ function IslandMesh({ island }: { island: IslandLayout }) {
       {TERRACES.map(({ y }, idx) => (
         <mesh key={idx} geometry={terraceCaps[idx]} position={[0, y + 0.01, 0]} receiveShadow castShadow>
           <meshStandardMaterial
-            map={island.isNodePlatform ? undefined : grassTex}
-            color={island.isNodePlatform ? '#5a7050' : '#ffffff'}
-            roughness={0.88}
+            map={island.isNodePlatform ? rockTex : grassTex}
+            color="#ffffff"
+            roughness={island.isNodePlatform ? 0.95 : 0.88}
           />
         </mesh>
       ))}
@@ -190,9 +194,9 @@ function IslandMesh({ island }: { island: IslandLayout }) {
       {/* Continuous shore ring — single mesh, no per-segment joints */}
       <mesh geometry={shoreGeom} receiveShadow castShadow>
         <meshStandardMaterial
-          map={island.isNodePlatform ? undefined : shoreTex}
-          color={island.isNodePlatform ? '#585450' : '#ffffff'}
-          roughness={0.92}
+          map={island.isNodePlatform ? rockTex : shoreTex}
+          color="#ffffff"
+          roughness={island.isNodePlatform ? 0.95 : 0.92}
           side={THREE.DoubleSide}
         />
       </mesh>

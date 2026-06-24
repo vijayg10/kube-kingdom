@@ -1,4 +1,6 @@
 import { useMemo } from 'react';
+import * as THREE from 'three';
+import { useTexture } from '@react-three/drei';
 import type { BuildingLayout } from '../../../types/layout';
 import { useLOD } from '../../../hooks/useLOD';
 
@@ -10,6 +12,17 @@ import { useLOD } from '../../../hooks/useLOD';
 export function Watchtower({ buildings }: { buildings: BuildingLayout[] }) {
   const lod = useLOD();
   const towers = useMemo(() => buildings.filter((b) => b.resourceType === 'daemonset'), [buildings]);
+
+  const brickTex     = useTexture('/textures/T_UnevenBrick_BaseColor.png');
+  const roughnessTex = useTexture('/textures/T_UnevenBrick_Roughness.png');
+  useMemo(() => {
+    [brickTex, roughnessTex].forEach((t) => {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(2, 4);
+      t.needsUpdate = true;
+    });
+  }, [brickTex, roughnessTex]);
+
   if (lod === 'far' || towers.length === 0) return null;
   return (
     <>
@@ -18,7 +31,7 @@ export function Watchtower({ buildings }: { buildings: BuildingLayout[] }) {
           {/* Shaft */}
           <mesh castShadow position={[0, 4, 0]}>
             <cylinderGeometry args={[1.1, 1.3, 8, 12]} />
-            <meshStandardMaterial color="#7a6a55" roughness={0.95} />
+            <meshStandardMaterial map={brickTex} roughnessMap={roughnessTex} />
           </mesh>
           {/* Top room (wider) */}
           <mesh castShadow position={[0, 8.6, 0]}>

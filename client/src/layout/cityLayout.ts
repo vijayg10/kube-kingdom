@@ -445,7 +445,7 @@ function buildTerrain(districts: DistrictLayout[], nodePositions: Vec3[]): Terra
   // Small octagonal platform island for each node (nodes sit in open water
   // between namespace islands, so they need their own land mass).
   nodePositions.forEach((pos, i) => {
-    const r = 11;
+    const r = 7;
     const platformRng = mulberry32(hashString(`node-platform:${i}`));
     const verts: Vec3[] = [];
     for (let j = 0; j < 8; j++) {
