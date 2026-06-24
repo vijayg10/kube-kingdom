@@ -41,8 +41,11 @@ function districtPolygon(center: Vec3, radius: number, seed: string): Vec3[] {
   const sides = 7 + Math.floor(rng() * 4); // 7–10 sides
   const verts: Vec3[] = [];
   for (let i = 0; i < sides; i++) {
-    const a = (i / sides) * Math.PI * 2;
-    const jitter = 0.78 + rng() * 0.34;
+    const baseAngle = (i / sides) * Math.PI * 2;
+    // Jitter angle ±40% of a sector so vertices aren't evenly spaced
+    const a = baseAngle + (rng() - 0.5) * (Math.PI / sides) * 0.8;
+    // Wider radius jitter for more organic outlines (was 0.78–1.12)
+    const jitter = 0.58 + rng() * 0.58;
     verts.push(v3(center.x + Math.cos(a) * radius * jitter, 0, center.z + Math.sin(a) * radius * jitter));
   }
   return verts;
@@ -443,10 +446,13 @@ function buildTerrain(districts: DistrictLayout[], nodePositions: Vec3[]): Terra
   // between namespace islands, so they need their own land mass).
   nodePositions.forEach((pos, i) => {
     const r = 11;
+    const platformRng = mulberry32(hashString(`node-platform:${i}`));
     const verts: Vec3[] = [];
     for (let j = 0; j < 8; j++) {
-      const a = (j / 8) * Math.PI * 2;
-      verts.push(v3(pos.x + Math.cos(a) * r, 0, pos.z + Math.sin(a) * r));
+      const baseA = (j / 8) * Math.PI * 2;
+      const a = baseA + (platformRng() - 0.5) * (Math.PI / 8) * 0.7;
+      const rv = r * (0.72 + platformRng() * 0.46);
+      verts.push(v3(pos.x + Math.cos(a) * rv, 0, pos.z + Math.sin(a) * rv));
     }
     islands.push({ namespace: '', nodeId: `node-${i}`, vertices: verts, center: pos, isNodePlatform: true });
   });

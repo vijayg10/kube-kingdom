@@ -16,6 +16,14 @@ const TERRACES = [
 
 const GRASS_TILE = 3.5; // world units per texture tile
 
+// Smooth a closed polygon through its control points using a Catmull-Rom spline.
+function smoothPolygon(vertices: Vec3[], samples = 72): Vec3[] {
+  if (vertices.length < 3) return vertices;
+  const pts = vertices.map((v) => new THREE.Vector3(v.x, 0, v.z));
+  const curve = new THREE.CatmullRomCurve3(pts, true);
+  return curve.getPoints(samples).map((p) => ({ x: p.x, y: 0, z: p.z }));
+}
+
 function polygonGeometry(vertices: Vec3[]): THREE.BufferGeometry {
   const shape = new THREE.Shape();
   vertices.forEach((p, i) => (i === 0 ? shape.moveTo(p.x, p.z) : shape.lineTo(p.x, p.z)));
@@ -139,17 +147,21 @@ function Ocean({ size, y }: { size: number; y: number }) {
 }
 
 function IslandMesh({ island }: { island: IslandLayout }) {
+  // Pre-smooth once; terrace caps and shore both use the same smoothed boundary
+  // so they align perfectly and there are no sharp-cornered seams.
+  const smoothed = useMemo(() => smoothPolygon(island.vertices, 72), [island.vertices]);
+
   const terraceCaps = useMemo(
     () =>
       TERRACES.map(({ scale }) =>
-        polygonGeometry(scaleVertices(island.vertices, island.center, scale)),
+        polygonGeometry(scaleVertices(smoothed, island.center, scale)),
       ),
-    [island.vertices, island.center],
+    [smoothed, island.center],
   );
 
   const shoreGeom = useMemo(
-    () => shoreGeometry(island.vertices, island.center),
-    [island.vertices, island.center],
+    () => shoreGeometry(smoothed, island.center),
+    [smoothed, island.center],
   );
 
   const grassTex = useTexture('/textures/T_Grass.png');
