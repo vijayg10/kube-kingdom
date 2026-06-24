@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { LogsPayload, DescribePayload } from '../types/cluster';
 
-export type SelectionKind = 'pod' | 'node' | 'service' | 'namespace';
+export type SelectionKind = 'pod' | 'node' | 'service' | 'namespace' | 'secret';
 
 export interface Selection {
   kind: SelectionKind;

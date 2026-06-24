@@ -51,6 +51,41 @@ function districtPolygon(center: Vec3, radius: number, seed: string): Vec3[] {
   return verts;
 }
 
+// Terrain terrace heights mirror Terrain.tsx TERRACES × 1.3 island expansion.
+// Island polygon = wallVertices × 1.3; terraces scale that polygon further.
+const TERRACE_RINGS = [
+  { scale: 1.3 * 0.37, y: 1.30 }, // hilltop — check innermost first
+  { scale: 1.3 * 0.68, y: 0.65 }, // mid slope
+  { scale: 1.3 * 1.00, y: 0.00 }, // shore
+];
+
+function pointInPolygon2D(px: number, pz: number, verts: Vec3[]): boolean {
+  let inside = false;
+  const n = verts.length;
+  let j = n - 1;
+  for (let i = 0; i < n; i++) {
+    const xi = verts[i].x, zi = verts[i].z;
+    const xj = verts[j].x, zj = verts[j].z;
+    if ((zi > pz) !== (zj > pz) && px < ((xj - xi) * (pz - zi)) / (zj - zi) + xi) {
+      inside = !inside;
+    }
+    j = i;
+  }
+  return inside;
+}
+
+function terrainHeightAt(px: number, pz: number, district: DistrictLayout): number {
+  for (const { scale, y } of TERRACE_RINGS) {
+    const scaled = district.wallVertices.map((v) => ({
+      x: district.center.x + (v.x - district.center.x) * scale,
+      y: 0,
+      z: district.center.z + (v.z - district.center.z) * scale,
+    }));
+    if (pointInPolygon2D(px, pz, scaled)) return y;
+  }
+  return 0;
+}
+
 /** Stable position for a building inside a disk, derived purely from its id. */
 function stableDiskPosition(id: string, center: Vec3, radius: number): Vec3 {
   const h = hashString(id);
@@ -239,7 +274,18 @@ export function generateCityLayout(state: ClusterState): CityLayout {
   }
 
   for (const sec of state.secrets) {
-    placeExt(sec.uid, 'secret', sec.namespace, { keys: sec.keys });
+    const d = districtByNs.get(sec.namespace) ?? districts[0];
+    if (!d) continue;
+    const pos = stableDiskPosition(sec.uid + ':ext', d.center, d.radius * 1.08);
+    buildings.push({
+      resourceId: sec.uid,
+      resourceType: 'secret',
+      position: { ...pos, y: terrainHeightAt(pos.x, pos.z, d) },
+      rotationY: (hashString(sec.uid + ':rot') % 360) * (Math.PI / 180),
+      namespace: sec.namespace,
+      lodDistances: EXT_LOD,
+      meta: { keys: sec.keys },
+    });
   }
 
   const nodePositions = buildings.filter((b) => b.resourceType === 'node').map((b) => b.position);

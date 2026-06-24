@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useClusterStore } from '../../store/clusterStore';
 import { useUiStore } from '../../store/uiStore';
-import type { KubeNode, Pod } from '../../types/cluster';
+import type { KubeNode, Pod, Secret } from '../../types/cluster';
 
 /**
  * Parchment detail panel (PROMPT Detail Panel, constitution Principle IV).
@@ -14,6 +14,7 @@ export function DetailPanel() {
   const multi = useUiStore((s) => s.multiSelection);
   const pods = useClusterStore((s) => s.pods); // reactive — panel stays live
   const nodes = useClusterStore((s) => s.nodes);
+  const secrets = useClusterStore((s) => s.secrets);
 
   // Escape closes (T038).
   useEffect(() => {
@@ -37,6 +38,11 @@ export function DetailPanel() {
     const node = nodes.get(selection.id);
     if (!node) return null;
     return <NodeDetail node={node} expanded={expanded} />;
+  }
+  if (selection.kind === 'secret') {
+    const secret = secrets.find((s) => s.uid === selection.id);
+    if (!secret) return null;
+    return <SecretDetail secret={secret} />;
   }
   return null;
 }
@@ -93,6 +99,19 @@ function NodeDetail({ node, expanded }: { node: KubeNode; expanded: boolean }) {
         </>
       )}
       <ExpandButton expanded={expanded} />
+    </Scroll>
+  );
+}
+
+function SecretDetail({ secret }: { secret: Secret }) {
+  return (
+    <Scroll title={secret.name} subtitle={`Secret · ${secret.namespace}`}>
+      <Row label="Type" value={secret.type} />
+      <Row label="Keys" value={String(secret.keys.length)} />
+      {secret.keys.map((k) => (
+        <Row key={k} label="" value={k} />
+      ))}
+      {labelChips(secret.labels)}
     </Scroll>
   );
 }

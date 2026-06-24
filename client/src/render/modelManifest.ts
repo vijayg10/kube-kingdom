@@ -32,6 +32,8 @@ export interface ModelManifest {
   house?: ModelEntry;
   /** Decorative tree. Instanced. */
   tree?: ModelEntry;
+  /** Secret → fortified vault. */
+  vault?: ModelEntry;
 }
 
 // Quaternius "Medieval Village Pack" (CC0), converted OBJ→GLB into
@@ -41,4 +43,5 @@ export const modelManifest: ModelManifest = {
   node: { url: '/models/medieval/Bell_Tower.glb', scale: 3, yOffset: 0, rotationY: 0 },
   house: { url: '/models/medieval/House_1.glb', scale: 1.4, yOffset: 0, rotationY: 0 },
   tree: { url: '/models/nature/CommonTree_1.gltf', scale: 1.0, yOffset: 0, rotationY: 0 },
+  vault: { url: '/models/medieval/Vault.glb', scale: 0.24, yOffset: 0, rotationY: 0 },
 };
