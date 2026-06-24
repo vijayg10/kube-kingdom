@@ -1,6 +1,8 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
+import { SkeletonUtils } from 'three-stdlib';
 import type { BuildingLayout, RoadLayout } from '../../types/layout';
 import { buildRoadLanes, type RoadLane } from '../../layout/roadCurves';
 import { useClusterStore } from '../../store/clusterStore';
@@ -22,6 +24,10 @@ interface CartState {
   offset: number;
 }
 
+const HORSE_SCALE    = 0.21;
+const WAGON_SCALE    = 0.56;
+const HORSE_OFFSET_Z = 0.5;
+
 export function Traffic({
   roads,
   buildings,
@@ -30,20 +36,46 @@ export function Traffic({
   buildings: BuildingLayout[];
 }) {
   const lod = useLOD();
-  const groupRefs = useRef<(THREE.Group | null)[]>([]);
+  const groupRefs  = useRef<(THREE.Group | null)[]>([]);
   const beaconRefs = useRef<(THREE.Mesh | null)[]>([]);
+
+  const { scene: wagonScene } = useGLTF('/models/medieval/Prop_Wagon.gltf');
+  const { scene: horseScene, animations } = useGLTF('/models/medieval/Bull.gltf');
 
   const carts = useMemo<CartState[]>(() => {
     const lanes = buildRoadLanes(roads, buildings);
     return lanes.map((lane, i) => ({ lane, t: (i * 0.37) % 1, offset: (i % 3) * 0.12 }));
   }, [roads, buildings]);
 
+  // One stable clone per cart — never re-created on render.
+  const wagonClones = useMemo(
+    () => carts.map(() => wagonScene.clone(true)),
+    [carts, wagonScene],
+  );
+
+  // Bull clones + their own AnimationMixers so each instance animates independently.
+  const horseData = useMemo(() => {
+    const walkClip = THREE.AnimationClip.findByName(animations, 'Walk');
+    return carts.map(() => {
+      const scene = SkeletonUtils.clone(horseScene) as THREE.Group;
+      const mixer = new THREE.AnimationMixer(scene);
+      if (walkClip) mixer.clipAction(walkClip).play();
+      return { scene, mixer };
+    });
+  }, [carts, horseScene, animations]);
+
+  // Stop all mixers on unmount.
+  useEffect(() => {
+    return () => horseData.forEach(({ mixer }) => mixer.stopAllAction());
+  }, [horseData]);
+
   useFrame((_s, dt) => {
     const traffic = useClusterStore.getState().traffic;
     for (let i = 0; i < carts.length; i++) {
       const g = groupRefs.current[i];
       if (!g) continue;
-      const cart = carts[i];
+
+      const cart  = carts[i];
       const state = latencyState(traffic.get(cart.lane.serviceUid));
       const speed = STATE_SPEED[state];
       cart.t = (cart.t + speed * dt) % 1;
@@ -61,6 +93,8 @@ export function Traffic({
         mat.emissive.copy(STATE_COLOR[state]);
         beacon.visible = state !== 'normal';
       }
+
+      horseData[i]?.mixer.update(dt);
     }
   });
 
@@ -70,17 +104,18 @@ export function Traffic({
     <>
       {carts.map((_, i) => (
         <group key={i} ref={(el) => (groupRefs.current[i] = el)}>
-          {/* Simple cart body (the GLB Cart is reserved for close hero shots). */}
-          <mesh castShadow position={[0, 0.25, 0]}>
-            <boxGeometry args={[0.6, 0.5, 1.0]} />
-            <meshStandardMaterial color="#7a5a36" roughness={0.9} />
-          </mesh>
-          <mesh position={[0, 0.05, 0]}>
-            <boxGeometry args={[0.7, 0.15, 1.1]} />
-            <meshStandardMaterial color="#4a3a2a" roughness={1} />
-          </mesh>
-          {/* Latency beacon. */}
-          <mesh ref={(el) => (beaconRefs.current[i] = el)} position={[0, 0.9, 0]}>
+          {/* Wagon */}
+          <primitive object={wagonClones[i]} scale={WAGON_SCALE} castShadow />
+          {/* Horse in front of wagon, facing travel direction */}
+          <primitive
+            object={horseData[i].scene}
+            scale={HORSE_SCALE}
+            position={[0, 0, HORSE_OFFSET_Z]}
+            rotation={[0, 0, 0]}
+            castShadow
+          />
+          {/* Latency beacon */}
+          <mesh ref={(el) => (beaconRefs.current[i] = el)} position={[0, 1.8, 0]}>
             <sphereGeometry args={[0.18, 8, 8]} />
             <meshStandardMaterial emissiveIntensity={2} toneMapped={false} />
           </mesh>
