@@ -28,9 +28,9 @@ export const STATE_COLOR: Record<LatencyState, THREE.Color> = {
 
 /** Cart speed (curve fraction per second) by latency state. */
 export const STATE_SPEED: Record<LatencyState, number> = {
-  normal: 0.32,
-  elevated: 0.2,
-  high: 0.12,
-  critical: 0.05,
+  normal: 0.18,
+  elevated: 0.12,
+  high: 0.07,
+  critical: 0.03,
   failed: 0,
 };

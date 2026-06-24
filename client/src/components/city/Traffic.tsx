@@ -10,10 +10,9 @@ import { useLOD } from '../../hooks/useLOD';
 import { latencyState, STATE_COLOR, STATE_SPEED } from './traffic/trafficState';
 
 /**
- * Animated road traffic (US4, FR-017): carts ride the service→pod road branches.
- * Cart speed reflects the service's latency tier; a colored beacon above each
- * cart shows the tier (green→red); failed services stop their carts and flag red.
- * All animation is in useFrame reading traffic straight from the store.
+ * Animated road traffic (US4, FR-017): horse carts ride the service→pod road
+ * branches. Cart speed reflects the service's latency tier; a colored beacon
+ * above each cart shows the tier (green→red); failed services stop their carts.
  */
 const _pos = new THREE.Vector3();
 const _tan = new THREE.Vector3();
@@ -24,9 +23,7 @@ interface CartState {
   offset: number;
 }
 
-const HORSE_SCALE    = 0.21;
-const WAGON_SCALE    = 0.56;
-const HORSE_OFFSET_Z = 0.5;
+const CART_SCALE = 0.5;
 
 export function Traffic({
   roads,
@@ -39,35 +36,35 @@ export function Traffic({
   const groupRefs  = useRef<(THREE.Group | null)[]>([]);
   const beaconRefs = useRef<(THREE.Mesh | null)[]>([]);
 
-  const { scene: wagonScene } = useGLTF('/models/medieval/Prop_Wagon.gltf');
-  const { scene: horseScene, animations } = useGLTF('/models/medieval/Bull.gltf');
+  const { scene: cartScene, animations } = useGLTF('/models/medieval/Horse_Cart.glb');
 
   const carts = useMemo<CartState[]>(() => {
     const lanes = buildRoadLanes(roads, buildings);
     return lanes.map((lane, i) => ({ lane, t: (i * 0.37) % 1, offset: (i % 3) * 0.12 }));
   }, [roads, buildings]);
 
-  // One stable clone per cart — never re-created on render.
-  const wagonClones = useMemo(
-    () => carts.map(() => wagonScene.clone(true)),
-    [carts, wagonScene],
-  );
-
-  // Bull clones + their own AnimationMixers so each instance animates independently.
-  const horseData = useMemo(() => {
-    const walkClip = THREE.AnimationClip.findByName(animations, 'Walk');
+  // One cloned scene + mixer per cart for independent animation.
+  // Pre-build both action sets; switch between them in useFrame.
+  const cartData = useMemo(() => {
+    const getClip = (name: string) => THREE.AnimationClip.findByName(animations, name) ?? null;
     return carts.map(() => {
-      const scene = SkeletonUtils.clone(horseScene) as THREE.Group;
+      const scene = SkeletonUtils.clone(cartScene) as THREE.Group;
       const mixer = new THREE.AnimationMixer(scene);
-      if (walkClip) mixer.clipAction(walkClip).play();
-      return { scene, mixer };
-    });
-  }, [carts, horseScene, animations]);
 
-  // Stop all mixers on unmount.
+      const moveActions = ['Walk', 'Wheel_LAction', 'Wheel_RAction']
+        .map(getClip).filter(Boolean).map((c) => mixer.clipAction(c!));
+      const idleAction = getClip('Idle') ? mixer.clipAction(getClip('Idle')!) : null;
+
+      // Start in moving state by default.
+      moveActions.forEach((a) => a.play());
+
+      return { scene, mixer, moveActions, idleAction, isMoving: true };
+    });
+  }, [carts, cartScene, animations]);
+
   useEffect(() => {
-    return () => horseData.forEach(({ mixer }) => mixer.stopAllAction());
-  }, [horseData]);
+    return () => cartData.forEach(({ mixer }) => mixer.stopAllAction());
+  }, [cartData]);
 
   useFrame((_s, dt) => {
     const traffic = useClusterStore.getState().traffic;
@@ -94,7 +91,21 @@ export function Traffic({
         beacon.visible = state !== 'normal';
       }
 
-      horseData[i]?.mixer.update(dt);
+      const data = cartData[i];
+      if (data) {
+        const moving = speed > 0;
+        if (moving !== data.isMoving) {
+          data.isMoving = moving;
+          if (moving) {
+            data.idleAction?.stop();
+            data.moveActions.forEach((a) => a.play());
+          } else {
+            data.moveActions.forEach((a) => a.stop());
+            data.idleAction?.play();
+          }
+        }
+        data.mixer.update(dt);
+      }
     }
   });
 
@@ -104,16 +115,7 @@ export function Traffic({
     <>
       {carts.map((_, i) => (
         <group key={i} ref={(el) => (groupRefs.current[i] = el)}>
-          {/* Wagon */}
-          <primitive object={wagonClones[i]} scale={WAGON_SCALE} castShadow />
-          {/* Horse in front of wagon, facing travel direction */}
-          <primitive
-            object={horseData[i].scene}
-            scale={HORSE_SCALE}
-            position={[0, 0, HORSE_OFFSET_Z]}
-            rotation={[0, 0, 0]}
-            castShadow
-          />
+          <primitive object={cartData[i].scene} scale={CART_SCALE} castShadow />
           {/* Latency beacon */}
           <mesh ref={(el) => (beaconRefs.current[i] = el)} position={[0, 1.8, 0]}>
             <sphereGeometry args={[0.18, 8, 8]} />
