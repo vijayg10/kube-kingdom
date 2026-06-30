@@ -267,7 +267,7 @@ export function generateCityLayout(state: ClusterState): CityLayout {
         buildings.push({
           resourceId: pod.uid,
           resourceType: 'pod',
-          position,
+          position: { ...position, y: terrainHeightAt(position.x, position.z, d) },
           rotationY: toCenter + yawJitter,
           namespace: pod.namespace,
           lodDistances: POD_LOD,
@@ -299,12 +299,13 @@ export function generateCityLayout(state: ClusterState): CityLayout {
   const placeExt = (id: string, type: BuildingResourceType, ns: string, meta?: Record<string, unknown>) => {
     const d = districtByNs.get(ns) ?? districts[0];
     if (!d) return;
+    const extPos = clampInsideIsland(
+      stableDiskPosition(id + ':ext', d.center, d.radius * 1.08), d.center, polyFor(d.namespace), 2.5,
+    );
     buildings.push({
       resourceId: id,
       resourceType: type,
-      position: clampInsideIsland(
-        stableDiskPosition(id + ':ext', d.center, d.radius * 1.08), d.center, polyFor(d.namespace), 2.5,
-      ),
+      position: { ...extPos, y: terrainHeightAt(extPos.x, extPos.z, d) },
       rotationY: (hashString(id + ':rot') % 360) * (Math.PI / 180),
       namespace: ns,
       lodDistances: EXT_LOD,
@@ -317,13 +318,14 @@ export function generateCityLayout(state: ClusterState): CityLayout {
     const d = districtByNs.get(ing.namespace);
     if (d) {
       const a = (hashString(ing.uid) % 360) * (Math.PI / 180);
+      const ingPos = clampInsideIsland(
+        v3(d.center.x + Math.cos(a) * (d.radius + 4), 0, d.center.z + Math.sin(a) * (d.radius + 4)),
+        d.center, polyFor(ing.namespace), 2,
+      );
       buildings.push({
         resourceId: ing.uid,
         resourceType: 'ingress',
-        position: clampInsideIsland(
-          v3(d.center.x + Math.cos(a) * (d.radius + 4), 0, d.center.z + Math.sin(a) * (d.radius + 4)),
-          d.center, polyFor(ing.namespace), 2,
-        ),
+        position: { ...ingPos, y: terrainHeightAt(ingPos.x, ingPos.z, d) },
         rotationY: a + Math.PI, // face inward
         namespace: ing.namespace,
         lodDistances: EXT_LOD,

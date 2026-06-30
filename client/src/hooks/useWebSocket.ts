@@ -9,7 +9,7 @@ const BACKOFF_MS = [1000, 2000, 4000, 8000, 16000]; // research.md §3 reconnect
 
 export type ConnectIntent =
   | { kind: 'mock' }
-  | { kind: 'cluster'; kubeconfig: string };
+  | { kind: 'cluster'; context: string };
 
 /**
  * Manages the single WebSocket connection for the session: connect on intent,
@@ -93,7 +93,7 @@ export function useWebSocket() {
       wsRef.current?.send(
         JSON.stringify({
           type: 'CONNECT_CLUSTER',
-          payload: { kubeconfig: intent.kubeconfig },
+          payload: { context: intent.context },
           timestamp: Date.now(),
         }),
       );

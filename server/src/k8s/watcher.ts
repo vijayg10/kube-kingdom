@@ -28,6 +28,18 @@ const WATCH_PATHS = {
 } as const;
 
 const RECONNECT_MS = 3000;
+
+function friendlyError(err: unknown): string {
+  const msg = String(err);
+  if (msg.includes('ECONNREFUSED')) return 'Cannot reach the cluster — connection refused. Retrying…';
+  if (msg.includes('ETIMEDOUT') || msg.includes('ESOCKETTIMEDOUT')) return 'Cluster connection timed out. Retrying…';
+  if (msg.includes('ENOTFOUND')) return 'Cluster hostname not found. Retrying…';
+  if (msg.includes('certificate') || msg.includes('CERT') || msg.includes('SSL'))
+    return 'TLS certificate error connecting to cluster. Retrying…';
+  if (msg.includes('401') || msg.includes('Unauthorized')) return 'Unauthorized — check your cluster credentials. Retrying…';
+  if (msg.includes('403') || msg.includes('Forbidden')) return 'Forbidden — insufficient permissions on the cluster. Retrying…';
+  return 'Lost connection to cluster. Retrying…';
+}
 const METRICS_INTERVAL_MS = 10_000;
 const SUMMARY_INTERVAL_MS = 5_000;
 
@@ -53,14 +65,14 @@ export class K8sWatcher extends EventEmitter implements ClusterSource {
   private timers: Array<ReturnType<typeof setInterval>> = [];
   private stopped = false;
 
-  constructor(kubeconfig?: string) {
+  private escalated = false;
+
+  constructor(context?: string) {
     super();
+    if (process.env.KUBECONFIG?.startsWith('~')) delete process.env.KUBECONFIG;
     this.kc = new k8s.KubeConfig();
-    if (kubeconfig && kubeconfig.trim().length > 0) {
-      this.kc.loadFromString(kubeconfig);
-    } else {
-      this.kc.loadFromDefault();
-    }
+    this.kc.loadFromDefault();
+    if (context) this.kc.setCurrentContext(context);
     this.watch = new k8s.Watch(this.kc);
     this.metrics = new k8s.Metrics(this.kc);
   }
@@ -138,29 +150,33 @@ export class K8sWatcher extends EventEmitter implements ClusterSource {
       const req = await this.watch.watch(
         WATCH_PATHS[key],
         {},
-        (phase, obj) => handler(phase, obj),
+        (phase, obj) => {
+          // Successful event — reset retry tracking for this stream.
+          this.streamRetries.set(key, 0);
+          this.escalated = false;
+          handler(phase, obj);
+        },
         (err) => {
           if (this.stopped) return;
-          if (err) {
-            emitMessage(this, {
-              type: 'ERROR',
-              payload: { code: 'WATCH_FAILED', message: `${key} watch ended: ${String(err)}` },
-              timestamp: Date.now(),
-            });
-          }
-          // Reconnect with a short delay (research.md §6).
+          if (err) this.handleStreamError(key, err);
           setTimeout(() => void this.startStream(key, handler), RECONNECT_MS);
         },
       );
       this.requests.push(req);
     } catch (err) {
-      emitMessage(this, {
-        type: 'ERROR',
-        payload: { code: 'CLUSTER_UNREACHABLE', message: `Cannot reach cluster: ${String(err)}` },
-        timestamp: Date.now(),
-      });
+      this.handleStreamError(key, err);
       setTimeout(() => void this.startStream(key, handler), RECONNECT_MS);
     }
+  }
+
+  private handleStreamError(_key: string, err: unknown): void {
+    if (this.escalated) return;
+    this.escalated = true;
+    emitMessage(this, {
+      type: 'ERROR',
+      payload: { code: 'CLUSTER_UNREACHABLE', message: friendlyError(err) },
+      timestamp: Date.now(),
+    });
   }
 
   // --- Resource handlers -------------------------------------------------

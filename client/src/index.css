@@ -7,6 +7,7 @@
 
 * {
   box-sizing: border-box;
+  cursor: url('/images/MOUSE_POINTER.png') 4 4, auto !important;
 }
 
 html,
@@ -59,6 +60,17 @@ canvas {
   border: 5px solid rgba(232, 217, 181, 0.25);
   border-top-color: #e8d9b5;
   animation: kk-spin 0.9s linear infinite;
+}
+
+.kk-dialogue-btn {
+  transition: filter 0.15s ease, transform 0.1s ease;
+}
+.kk-dialogue-btn:hover {
+  filter: brightness(1.2);
+}
+.kk-dialogue-btn:active {
+  filter: brightness(0.85);
+  transform: scale(0.97);
 }
 
 .kk-loading-text {

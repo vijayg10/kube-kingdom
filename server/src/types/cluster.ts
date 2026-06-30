@@ -238,6 +238,7 @@ export type ErrorCode =
   | 'KUBECONFIG_INVALID'
   | 'CLUSTER_UNREACHABLE'
   | 'WATCH_FAILED'
+  | 'WATCH_RECONNECTING'
   | 'ACTION_DENIED';
 
 export interface WsErrorPayload {
@@ -291,7 +292,7 @@ export type ServerMessage =
 // --- Client → Server messages ---
 export type ClientMessage =
   | (WsMessage<null> & { type: 'CONNECT_MOCK' })
-  | (WsMessage<{ kubeconfig: string }> & { type: 'CONNECT_CLUSTER' })
+  | (WsMessage<{ context: string }> & { type: 'CONNECT_CLUSTER' })
   | (WsMessage<{ name: string; namespace: string }> & { type: 'ACTION_RESTART_POD' })
   | (WsMessage<{ name: string; namespace: string }> & { type: 'ACTION_DELETE_POD' })
   | (WsMessage<{ name: string; namespace: string; replicas: number }> & {

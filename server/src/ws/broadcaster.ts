@@ -67,7 +67,7 @@ export class Broadcaster {
         break;
 
       case 'CONNECT_CLUSTER':
-        this.startLive(msg.payload.kubeconfig);
+        this.startLive(msg.payload.context);
         this.sendConfig(ws);
         this.sendSnapshot(ws);
         break;
@@ -165,9 +165,9 @@ export class Broadcaster {
    * The kubeconfig is held only in the watcher's memory and is discarded when
    * the source is stopped/replaced — never written to disk (FR-024).
    */
-  private startLive(kubeconfig: string): void {
+  private startLive(context: string): void {
     try {
-      this.swapSource(new K8sWatcher(kubeconfig), 'live');
+      this.swapSource(new K8sWatcher(context), 'live');
     } catch (err) {
       this.broadcast({
         type: 'ERROR',

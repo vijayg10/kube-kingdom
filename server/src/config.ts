@@ -1,4 +1,7 @@
-import 'dotenv/config';
+import { config as dotenvConfig } from 'dotenv';
+import { resolve } from 'node:path';
+// .env lives at the monorepo root, one level above this workspace.
+dotenvConfig({ path: resolve(process.cwd(), '../.env') });
 
 /**
  * Centralized environment configuration for the Kube Kingdom server.

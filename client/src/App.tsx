@@ -13,6 +13,7 @@ import { Toast } from './components/hud/Toast';
 import { useUiStore } from './store/uiStore';
 import { useClusterStore } from './store/clusterStore';
 import { useWebSocket, type ConnectIntent } from './hooks/useWebSocket';
+import { useBGM } from './hooks/useBGM';
 
 /**
  * App shell + view routing (landing ↔ city). Owns the single WebSocket session.
@@ -22,6 +23,7 @@ export default function App() {
   const connection = useUiStore((s) => s.connection);
   const setView = useUiStore((s) => s.setView);
   const { connect, disconnect } = useWebSocket();
+  useBGM();
 
   const start = useCallback(
     (intent: ConnectIntent) => {
@@ -42,7 +44,7 @@ export default function App() {
     return (
       <LandingScreen
         onExploreDemo={() => start({ kind: 'mock' })}
-        onConnectCluster={(kubeconfig) => start({ kind: 'cluster', kubeconfig })}
+        onConnectCluster={(context) => start({ kind: 'cluster', context })}
       />
     );
   }
@@ -54,9 +56,10 @@ export default function App() {
       <button onClick={leave} style={backBtn}>
         ← Leave City
       </button>
+
       <ConnectionBadge status={connection} />
       {connection === 'error' && (
-        <ErrorBanner onLeave={leave} />
+        <ClusterUnavailableModal onLeave={leave} />
       )}
       <ResourceBar />
       <DetailPanel />
@@ -82,13 +85,20 @@ function LoadingOverlay() {
   );
 }
 
-function ErrorBanner({ onLeave }: { onLeave: () => void }) {
+function ClusterUnavailableModal({ onLeave }: { onLeave: () => void }) {
   const error = useUiStore((s) => s.connectionError);
   return (
-    <div style={errorBanner}>
-      <span style={{ fontSize: '1.1rem' }}>⚠</span>
-      <span style={{ flex: 1 }}>{error ?? 'Connection lost. The city has gone dark.'}</span>
-      <button style={errorLeaveBtn} onClick={onLeave}>Return to Landing</button>
+    <div style={modalBackdrop}>
+      <div style={modalBox}>
+
+        <h2 style={modalTitle}>Cluster Unavailable</h2>
+        <p style={modalMessage}>
+          {error ?? 'The cluster is not reachable. Check that it is running and try again.'}
+        </p>
+        <button className="kk-dialogue-btn" style={modalBtn} onClick={onLeave}>
+          Return to Landing
+        </button>
+      </div>
     </div>
   );
 }
@@ -118,33 +128,63 @@ const backBtn: React.CSSProperties = {
   zIndex: 20,
 };
 
-const errorBanner: React.CSSProperties = {
+
+const modalBackdrop: React.CSSProperties = {
   position: 'fixed',
-  top: 0,
-  left: 0,
-  right: 0,
-  padding: '12px 20px',
-  background: 'rgba(140,30,20,0.95)',
-  border: 'none',
-  borderBottom: '2px solid #c8412f',
-  color: '#fff',
+  inset: 0,
+  background: 'rgba(10,6,2,0.75)',
   display: 'flex',
   alignItems: 'center',
-  gap: 12,
-  fontSize: '0.88rem',
-  fontFamily: 'inherit',
+  justifyContent: 'center',
   zIndex: 80,
 };
 
-const errorLeaveBtn: React.CSSProperties = {
-  padding: '5px 14px',
-  background: 'rgba(255,255,255,0.15)',
-  border: '1px solid rgba(255,255,255,0.4)',
-  borderRadius: 5,
-  color: '#fff',
-  fontSize: '0.82rem',
+const modalBox: React.CSSProperties = {
+  backgroundImage: 'url(/textures/T_Dialogue_BG.png)',
+  backgroundSize: '100% 100%',
+  border: 'none',
+  borderRadius: 18,
+  padding: '5.5rem 3rem 2.8rem',
+  width: 380,
+  textAlign: 'center',
+  boxShadow: '0 16px 64px rgba(0,0,0,0.7)',
+  color: '#3a2010',
+  fontFamily: "'Cinzel', serif",
+};
+
+const modalIcon: React.CSSProperties = {
+  width: 44,
+  height: 44,
+  marginBottom: '0.6rem',
+};
+
+const modalTitle: React.CSSProperties = {
+  margin: '0 0 0.75rem',
+  fontSize: '1.25rem',
+  fontWeight: 700,
+  fontFamily: "'Cinzel', serif",
+  letterSpacing: '0.04em',
+};
+
+const modalMessage: React.CSSProperties = {
+  fontSize: '0.88rem',
+  fontFamily: "'IM Fell English', serif",
+  opacity: 0.85,
+  margin: '0 0 1.6rem',
+  lineHeight: 1.7,
+};
+
+const modalBtn: React.CSSProperties = {
+  padding: '0.6rem 1.6rem',
+  fontSize: '0.85rem',
+  fontFamily: "'Cinzel', serif",
+  letterSpacing: '0.05em',
+  backgroundImage: 'url(/textures/T_Button_BG.png)',
+  backgroundSize: '100% 100%',
+  color: '#e8d9b5',
+  border: 'none',
+  borderRadius: 6,
   cursor: 'pointer',
-  fontFamily: 'inherit',
 };
 
 const badge: React.CSSProperties = {

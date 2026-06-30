@@ -197,6 +197,7 @@ function ModelPodHouses({ buildings }: { buildings: BuildingLayout[] }) {
             scale={entry.scale}
             rotationY={entry.rotationY ?? 0}
             position={{ x: 0, y: entry.yOffset ?? 0, z: 0 }}
+            groundAlign
           />
         </group>
       ))}
