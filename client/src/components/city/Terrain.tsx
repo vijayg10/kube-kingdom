@@ -26,7 +26,9 @@ function smoothPolygon(vertices: Vec3[], samples = 72): Vec3[] {
 
 function polygonGeometry(vertices: Vec3[]): THREE.BufferGeometry {
   const shape = new THREE.Shape();
-  vertices.forEach((p, i) => (i === 0 ? shape.moveTo(p.x, p.z) : shape.lineTo(p.x, p.z)));
+  // ShapeGeometry + rotateX(-π/2) maps shape Y → world -Z, so negate Z here to
+  // keep the grass in the same +Z layout space as props/buildings/roads (see Road.tsx).
+  vertices.forEach((p, i) => (i === 0 ? shape.moveTo(p.x, -p.z) : shape.lineTo(p.x, -p.z)));
   shape.closePath();
   const geom = new THREE.ShapeGeometry(shape);
   geom.rotateX(-Math.PI / 2);
@@ -75,8 +77,8 @@ function shoreGeometry(vertices: Vec3[], center: Vec3, shoreOut = SHORE_OUT): TH
 
   for (let i = 0; i < n; i++) {
     const v = vertices[i];
-    const wx = v.x, wz = -v.z;
-    const dx = wx - center.x, dz = wz - (-center.z);
+    const wx = v.x, wz = v.z;
+    const dx = wx - center.x, dz = wz - center.z;
     const dl = Math.hypot(dx, dz) || 1;
     const ox = dx / dl, oz = dz / dl;
     const u = cum[i] / SHORE_TILE; // world-distance-based U — same scale as V
@@ -93,8 +95,10 @@ function shoreGeometry(vertices: Vec3[], center: Vec3, shoreOut = SHORE_OUT): TH
 
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
-    idx.push(i, n + i, j);
-    idx.push(n + i, n + j, j);
+    // Winding reversed vs. the un-negated layout so face normals stay up after
+    // the Z-negation that keeps the shore aligned with the grass cap.
+    idx.push(i, j, n + i);
+    idx.push(n + i, j, n + j);
   }
 
   const geom = new THREE.BufferGeometry();

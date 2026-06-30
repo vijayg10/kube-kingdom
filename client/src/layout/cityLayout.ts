@@ -12,6 +12,7 @@ import type {
   TerrainLayout,
   Vec3,
 } from '../types/layout';
+import * as THREE from 'three';
 import { hashString, mulberry32, rngFor } from './seededRandom';
 
 // LOD thresholds (camera distance units): [far→mid, mid→close]. research.md §2.
@@ -95,6 +96,63 @@ function stableDiskPosition(id: string, center: Vec3, radius: number): Vec3 {
   return v3(center.x + Math.cos(angle) * r, 0, center.z + Math.sin(angle) * r);
 }
 
+// --- Island-shape-aware placement -----------------------------------------
+// Trees and extended resources sit in the shore ring near the island edge.
+// The island is irregular (and smoothed by Terrain.tsx), so a circular radius
+// overshoots the real shore in the pinched directions → props on water. These
+// helpers place/clamp against the island's ACTUAL rendered outline instead.
+const ISLAND_EXPANSION = 1.3;    // must match buildTerrain
+const ISLAND_SMOOTH_SAMPLES = 72; // must match Terrain.tsx smoothPolygon
+
+/** Catmull-Rom smoothing identical to Terrain.tsx, so placement == rendered shore. */
+function smoothClosed(verts: Vec3[]): Vec3[] {
+  if (verts.length < 3) return verts;
+  const pts = verts.map((v) => new THREE.Vector3(v.x, 0, v.z));
+  return new THREE.CatmullRomCurve3(pts, true)
+    .getPoints(ISLAND_SMOOTH_SAMPLES)
+    .map((p) => ({ x: p.x, y: 0, z: p.z }));
+}
+
+/** The rendered island (grass) outline for a district. */
+function islandPolyFor(d: DistrictLayout): Vec3[] {
+  const grown = d.wallVertices.map((v) =>
+    v3(
+      d.center.x + (v.x - d.center.x) * ISLAND_EXPANSION,
+      0,
+      d.center.z + (v.z - d.center.z) * ISLAND_EXPANSION,
+    ),
+  );
+  return smoothClosed(grown);
+}
+
+/** Distance from `center` to the polygon edge along `angle` (nearest ray hit). */
+function edgeRadiusAt(center: Vec3, poly: Vec3[], angle: number): number {
+  const dx = Math.cos(angle), dz = Math.sin(angle);
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const ex = b.x - a.x, ez = b.z - a.z;
+    const det = ex * dz - dx * ez;
+    if (Math.abs(det) < 1e-9) continue; // ray parallel to edge
+    const acx = a.x - center.x, acz = a.z - center.z;
+    const t = (ex * acz - ez * acx) / det;
+    const s = (dx * acz - dz * acx) / det;
+    if (t >= 0 && s >= -1e-6 && s <= 1 + 1e-6) best = Math.min(best, t);
+  }
+  return Number.isFinite(best) ? best : 0;
+}
+
+/** Pull a position inside the island (to edge − margin) if it sits beyond it. */
+function clampInsideIsland(pos: Vec3, center: Vec3, poly: Vec3[], margin: number): Vec3 {
+  const dx = pos.x - center.x, dz = pos.z - center.z;
+  const rp = Math.hypot(dx, dz);
+  if (rp < 1e-6) return pos;
+  const maxR = Math.max(0, edgeRadiusAt(center, poly, Math.atan2(dz, dx)) - margin);
+  if (rp <= maxR) return pos;
+  const k = maxR / rp;
+  return v3(center.x + dx * k, pos.y, center.z + dz * k);
+}
+
 /** Grid slot for index i out of total items, centered on parent, with given spacing. */
 function gridSlot(index: number, total: number, center: Vec3, spacing: number): Vec3 {
   const cols = Math.max(1, Math.ceil(Math.sqrt(total)));
@@ -154,6 +212,9 @@ export function generateCityLayout(state: ClusterState): CityLayout {
   });
 
   const districtByNs = new Map(districts.map((d) => [d.namespace, d]));
+  // Actual rendered island outline per namespace, for shape-aware placement.
+  const islandPolyByNs = new Map(districts.map((d) => [d.namespace, islandPolyFor(d)]));
+  const polyFor = (ns: string) => islandPolyByNs.get(ns) ?? [];
 
   // --- Hamlets (deployments) + pod houses ---------------------------------
   // Pods are grouped into deployment "hamlets" (SC-006) so deployments read as
@@ -170,8 +231,16 @@ export function generateCityLayout(state: ClusterState): CityLayout {
       byDep.set(key, arr);
     }
     const depNames = [...byDep.keys()].sort();
-    // Spacing between hamlet centers — shrinks for many deployments so they fit the district.
-    const hamletSpacing = Math.min(d.radius * 0.7, 16);
+    const islandPoly = islandPolyByNs.get(d.namespace) ?? islandPolyFor(d);
+    // Hamlet grid spacing must shrink as the deployment count grows so the whole
+    // grid (plus each hamlet's pod sub-grid) fits the island instead of spilling
+    // past its pinched edges into the water.
+    const footprint = (p: number) => ((Math.ceil(Math.sqrt(Math.max(1, p))) - 1) / 2) * 5.5 + 3;
+    const maxFoot = Math.max(...depNames.map((dn) => footprint(byDep.get(dn)!.length)));
+    const cols = Math.max(1, Math.ceil(Math.sqrt(depNames.length)));
+    const innerR = d.radius * 0.62; // keep the grid well inside the shore
+    const fitSpacing = cols > 1 ? (2 * (innerR - maxFoot)) / (cols - 1) : 0;
+    const hamletSpacing = Math.max(2 * maxFoot + 2, Math.min(16, fitSpacing));
     depNames.forEach((dep, i) => {
       const depPods = byDep.get(dep)!;
       // Hamlet centers on a grid inside the district.
@@ -185,7 +254,7 @@ export function generateCityLayout(state: ClusterState): CityLayout {
         buildings.push({
           resourceId: pod.uid,
           resourceType: 'pod',
-          position: gridSlot(idx, sortedPods.length, hCenter, 5.5),
+          position: clampInsideIsland(gridSlot(idx, sortedPods.length, hCenter, 5.5), d.center, islandPoly, 4),
           rotationY: (hashString(pod.uid + ':rot') % 360) * (Math.PI / 180),
           namespace: pod.namespace,
           lodDistances: POD_LOD,
@@ -220,7 +289,9 @@ export function generateCityLayout(state: ClusterState): CityLayout {
     buildings.push({
       resourceId: id,
       resourceType: type,
-      position: stableDiskPosition(id + ':ext', d.center, d.radius * 1.08),
+      position: clampInsideIsland(
+        stableDiskPosition(id + ':ext', d.center, d.radius * 1.08), d.center, polyFor(d.namespace), 2.5,
+      ),
       rotationY: (hashString(id + ':rot') % 360) * (Math.PI / 180),
       namespace: ns,
       lodDistances: EXT_LOD,
@@ -236,7 +307,10 @@ export function generateCityLayout(state: ClusterState): CityLayout {
       buildings.push({
         resourceId: ing.uid,
         resourceType: 'ingress',
-        position: v3(d.center.x + Math.cos(a) * (d.radius + 4), 0, d.center.z + Math.sin(a) * (d.radius + 4)),
+        position: clampInsideIsland(
+          v3(d.center.x + Math.cos(a) * (d.radius + 4), 0, d.center.z + Math.sin(a) * (d.radius + 4)),
+          d.center, polyFor(ing.namespace), 2,
+        ),
         rotationY: a + Math.PI, // face inward
         namespace: ing.namespace,
         lodDistances: EXT_LOD,
@@ -276,7 +350,9 @@ export function generateCityLayout(state: ClusterState): CityLayout {
   for (const sec of state.secrets) {
     const d = districtByNs.get(sec.namespace) ?? districts[0];
     if (!d) continue;
-    const pos = stableDiskPosition(sec.uid + ':ext', d.center, d.radius * 1.08);
+    const pos = clampInsideIsland(
+      stableDiskPosition(sec.uid + ':ext', d.center, d.radius * 1.08), d.center, polyFor(sec.namespace), 2.5,
+    );
     buildings.push({
       resourceId: sec.uid,
       resourceType: 'secret',
@@ -306,7 +382,7 @@ export function generateCityLayout(state: ClusterState): CityLayout {
 
   // --- Terrain + props -----------------------------------------------------
   const terrain = buildTerrain(districts, nodePositions);
-  const props = buildProps(districts, hamlets, terrain);
+  const props = buildProps(districts, hamlets, terrain, islandPolyByNs);
 
   return {
     terrain,
@@ -337,6 +413,7 @@ function buildProps(
   districts: DistrictLayout[],
   hamlets: HamletLayout[],
   _terrain: TerrainLayout,
+  islandPolyByNs: Map<string, Vec3[]>,
 ): PropsLayout {
   const trees: Vec3[] = [];
   const lamps: Vec3[] = [];
@@ -347,18 +424,18 @@ function buildProps(
     decor.push({ model, position: pos, rotationY, scale: DECOR_SCALE[model] ?? 2 });
 
   for (const d of districts) {
+    const islandPoly = islandPolyByNs.get(d.namespace) ?? islandPolyFor(d);
     // Lamp posts at alternating district wall vertices.
     d.wallVertices.forEach((v, i) => {
       if (i % 2 === 0) lamps.push(v3(v.x, 0, v.z));
     });
-    // A ring of trees just outside the district wall, capped to island edge.
-    const islandEdgeR = d.radius * 1.28; // island boundary (1.3× but leave 2% gap)
+    // A ring of trees near the shore, clamped to the island's real outline.
     const treeRing = Math.floor(d.radius / 2.2);
     for (let i = 0; i < treeRing; i++) {
       const a = (i / treeRing) * Math.PI * 2 + (hashString(d.namespace) % 100) / 100;
       const rawR = d.radius + 3.5 + ((hashString(d.namespace + i) % 100) / 100) * 2;
-      const r = Math.min(rawR, islandEdgeR - 0.5); // keep trees on land
-      trees.push(v3(d.center.x + Math.cos(a) * r, 0, d.center.z + Math.sin(a) * r));
+      const p = v3(d.center.x + Math.cos(a) * rawR, 0, d.center.z + Math.sin(a) * rawR);
+      trees.push(clampInsideIsland(p, d.center, islandPoly, 1.5));
     }
 
     // Medieval decor scattered within the district.
@@ -423,6 +500,7 @@ function buildProps(
   // Scatter trees and rocks on the island shore of each district (the ring
   // between the district wall and the island edge). Ocean areas get no props.
   for (const d of districts) {
+    const islandPoly = islandPolyByNs.get(d.namespace) ?? islandPolyFor(d);
     const islandR = d.radius * 1.28; // matches the 1.3 expansion in buildTerrain
     const shoreInner = d.radius + 1;
     const shoreOuter = islandR - 0.5;
@@ -432,22 +510,27 @@ function buildProps(
     for (let i = 0; i < count; i++) {
       const a = rng() * Math.PI * 2;
       const r = shoreInner + rng() * (shoreOuter - shoreInner);
-      const x = d.center.x + Math.cos(a) * r;
-      const z = d.center.z + Math.sin(a) * r;
-      if (rng() > 0.88) addDecor('Rock_1', v3(x, 0, z), rng() * Math.PI * 2);
-      else trees.push(v3(x, 0, z));
+      const p = clampInsideIsland(
+        v3(d.center.x + Math.cos(a) * r, 0, d.center.z + Math.sin(a) * r), d.center, islandPoly, 1,
+      );
+      if (rng() > 0.88) addDecor('Rock_1', p, rng() * Math.PI * 2);
+      else trees.push(p);
     }
   }
 
   // Dense ground cover (grass, bushes, plants) scattered across each island.
   for (const d of districts) {
+    const islandPoly = islandPolyByNs.get(d.namespace) ?? islandPolyFor(d);
     const islandR = d.radius * 1.28;
     const rng = mulberry32(hashString('gc:' + d.namespace));
     const count = Math.floor(d.radius * 4);
     for (let i = 0; i < count; i++) {
       const a = rng() * Math.PI * 2;
       const r = rng() * islandR * 0.95;
-      groundCover.push(v3(d.center.x + Math.cos(a) * r, 0, d.center.z + Math.sin(a) * r));
+      const p = clampInsideIsland(
+        v3(d.center.x + Math.cos(a) * r, 0, d.center.z + Math.sin(a) * r), d.center, islandPoly, 0.5,
+      );
+      groundCover.push(p);
     }
   }
 

@@ -73,7 +73,14 @@ export function Traffic({
       if (!g) continue;
 
       const cart  = carts[i];
-      const state = latencyState(traffic.get(cart.lane.serviceUid));
+      // Carts only exist where there's real traffic data. No event for this
+      // service (e.g. a real cluster with no traffic source) → hide the cart
+      // rather than imply healthy "normal" flow on every road.
+      const event = traffic.get(cart.lane.serviceUid);
+      g.visible = !!event;
+      if (!event) continue;
+
+      const state = latencyState(event);
       const speed = STATE_SPEED[state];
       cart.t = (cart.t + speed * dt) % 1;
 
@@ -114,7 +121,7 @@ export function Traffic({
   return (
     <>
       {carts.map((_, i) => (
-        <group key={i} ref={(el) => (groupRefs.current[i] = el)}>
+        <group key={i} ref={(el) => (groupRefs.current[i] = el)} visible={false}>
           <primitive object={cartData[i].scene} scale={CART_SCALE} castShadow />
           {/* Latency beacon */}
           <mesh ref={(el) => (beaconRefs.current[i] = el)} position={[0, 1.8, 0]}>

@@ -477,7 +477,13 @@ function mapPodHealth(obj: any): PodHealth {
   for (const c of statuses) {
     const waiting = c.state?.waiting?.reason;
     if (waiting === 'CrashLoopBackOff') return 'CrashLoopBackOff';
-    if (waiting === 'Error' || (c.restartCount ?? 0) > 3) return 'Restarting';
+    // "Restarting" must reflect the container's *current* state, not its
+    // lifetime restartCount — a long-running pod can have many historical
+    // restarts yet be perfectly healthy now. Flag it only when a container is
+    // actively failing/churning right now.
+    if (waiting === 'Error') return 'Restarting';
+    const terminated = c.state?.terminated;
+    if (terminated && (terminated.exitCode ?? 0) !== 0 && !c.ready) return 'Restarting';
   }
   if (phase === 'Running') return 'Running';
   return 'Unknown';
