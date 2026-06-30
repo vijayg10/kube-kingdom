@@ -70,8 +70,10 @@ function buildRoadGeometry(road: RoadLayout, posById: Map<string, Vec3>): THREE.
 
 function RoadsInner({
   geometries,
+  plazas,
 }: {
   geometries: { uid: string; geom: THREE.BufferGeometry }[];
+  plazas: { key: string; pos: Vec3; r: number }[];
 }) {
   const pathMap = useTexture('/textures/T_Path.png');
 
@@ -83,6 +85,19 @@ function RoadsInner({
 
   return (
     <>
+      {/* Market-square plazas where roads converge, so they don't pinch to a point.
+          Sit just below the roads (1.34 < 1.35) so the branches draw over them. */}
+      {plazas.map(({ key, pos, r }) => (
+        <mesh
+          key={`plaza-${key}`}
+          material={roadMaterial}
+          receiveShadow
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[pos.x, 1.34, pos.z]}
+        >
+          <circleGeometry args={[r, 24]} />
+        </mesh>
+      ))}
       {geometries.map(({ uid, geom }) => (
         <mesh key={uid} geometry={geom} material={roadMaterial} receiveShadow position={[0, 1.35, 0]} />
       ))}
@@ -107,9 +122,20 @@ export function Roads({
     return result;
   }, [roads, buildings]);
 
+  // One plaza per distinct road origin (district center) where branches meet.
+  const plazas = useMemo(() => {
+    const byKey = new Map<string, Vec3>();
+    for (const r of roads) {
+      const a = r.pathPoints[0];
+      if (!a) continue;
+      byKey.set(`${a.x.toFixed(1)},${a.z.toFixed(1)}`, a);
+    }
+    return [...byKey.entries()].map(([key, pos]) => ({ key, pos, r: 4 }));
+  }, [roads]);
+
   if (lod === 'far') return null;
 
-  return <RoadsInner geometries={geometries} />;
+  return <RoadsInner geometries={geometries} plazas={plazas} />;
 }
 
 export default Roads;

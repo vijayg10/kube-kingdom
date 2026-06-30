@@ -250,12 +250,25 @@ export function generateCityLayout(state: ClusterState): CityLayout {
 
       // Pod-houses on a tight grid inside each hamlet; sorted for stable assignment.
       const sortedPods = [...depPods].sort((a, b) => a.uid.localeCompare(b.uid));
+      const POD_SPACING = 5.5;
       sortedPods.forEach((pod, idx) => {
+        // Break the rigid lattice with a seeded offset (~35% of spacing) so the
+        // hamlet reads as an organic cluster rather than a parking grid.
+        const jr = mulberry32(hashString(pod.uid + ':jit'));
+        const jmax = POD_SPACING * 0.35;
+        const slot = gridSlot(idx, sortedPods.length, hCenter, POD_SPACING);
+        const raw = v3(slot.x + (jr() - 0.5) * 2 * jmax, 0, slot.z + (jr() - 0.5) * 2 * jmax);
+        const position = clampInsideIsland(raw, d.center, islandPoly, 4);
+        // Face the road: service roads arrive from the district center, so orient
+        // the house toward it (same convention as nodes) + a small ±8° jitter,
+        // replacing the previous fully-random yaw that looked chaotic.
+        const toCenter = Math.atan2(d.center.z - position.z, d.center.x - position.x);
+        const yawJitter = ((hashString(pod.uid + ':yaw') % 17) - 8) * (Math.PI / 180);
         buildings.push({
           resourceId: pod.uid,
           resourceType: 'pod',
-          position: clampInsideIsland(gridSlot(idx, sortedPods.length, hCenter, 5.5), d.center, islandPoly, 4),
-          rotationY: (hashString(pod.uid + ':rot') % 360) * (Math.PI / 180),
+          position,
+          rotationY: toCenter + yawJitter,
           namespace: pod.namespace,
           lodDistances: POD_LOD,
         });

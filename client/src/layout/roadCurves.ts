@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { BuildingLayout, RoadLayout, Vec3 } from '../types/layout';
+import { hashString } from './seededRandom';
 
 /**
  * A gently-bent road branch from a service anchor to one pod-house. Shared by
@@ -16,7 +17,12 @@ export function branchCurve(from: Vec3, to: Vec3): THREE.CatmullRomCurve3 {
   const len = Math.hypot(dx, dz) || 1;
   const nx = -dz / len;
   const nz = dx / len;
-  const bend = Math.min(len * 0.18, 6);
+  // Seed bend side + magnitude from the endpoint so branches don't all bow the
+  // same way (which produced a uniform pinwheel). Each road curves differently.
+  const h = hashString(`bend:${to.x.toFixed(1)},${to.z.toFixed(1)}`);
+  const sign = h & 1 ? 1 : -1;
+  const mag = 0.1 + ((h >>> 1) % 100) / 100 * 0.16; // 0.10–0.26
+  const bend = Math.min(len * mag, 7) * sign;
   mid.x += nx * bend;
   mid.z += nz * bend;
   return new THREE.CatmullRomCurve3([
