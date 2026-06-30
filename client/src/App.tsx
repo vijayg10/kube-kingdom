@@ -50,6 +50,7 @@ export default function App() {
   return (
     <>
       <CityScene />
+      <LoadingOverlay />
       <button onClick={leave} style={backBtn}>
         ← Leave City
       </button>
@@ -67,6 +68,17 @@ export default function App() {
       <DescribePanel />
       <Toast />
     </>
+  );
+}
+
+function LoadingOverlay() {
+  const topologyVersion = useClusterStore((s) => s.topologyVersion);
+  const loaded = topologyVersion > 0;
+  return (
+    <div className={`kk-loading-overlay${loaded ? ' hidden' : ''}`}>
+      <div className="kk-loading-ring" />
+      <span className="kk-loading-text">Summoning the Kingdom&hellip;</span>
+    </div>
   );
 }
 

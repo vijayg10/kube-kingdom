@@ -40,7 +40,6 @@ export function PodEffects({ buildings }: { buildings: BuildingLayout[] }) {
       } else if (pod.health === 'Pending') {
         if (pendingS.length < MAX_SITES) pendingS.push(pos);
       } else if (pod.health === 'Evicted') {
-        if (smokeS.length < MAX_SITES) smokeS.push(pos);
         if (evictedS.length < MAX_SITES) evictedS.push(pos);
       }
     }

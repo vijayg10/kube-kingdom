@@ -14,6 +14,7 @@ import type {
   NodeHealth,
   Pod,
   PodHealth,
+  Secret,
 } from '../types/cluster.js';
 import { emitMessage, type ClusterSource } from './clusterSource.js';
 
@@ -23,6 +24,7 @@ const WATCH_PATHS = {
   namespaces: '/api/v1/namespaces',
   services: '/api/v1/services',
   deployments: '/apis/apps/v1/deployments',
+  secrets: '/api/v1/secrets',
 } as const;
 
 const RECONNECT_MS = 3000;
@@ -45,6 +47,7 @@ export class K8sWatcher extends EventEmitter implements ClusterSource {
   private namespaces = new Map<string, Namespace>();
   private services = new Map<string, KubeService>();
   private deployments = new Map<string, Deployment>();
+  private secrets = new Map<string, Secret>();
 
   private requests: Array<{ abort(): void }> = [];
   private timers: Array<ReturnType<typeof setInterval>> = [];
@@ -77,7 +80,7 @@ export class K8sWatcher extends EventEmitter implements ClusterSource {
       persistentVolumes: [],
       hpas: [],
       configMaps: [],
-      secrets: [],
+      secrets: [...this.secrets.values()],
       summary: this.computeSummary(),
       snapshotAt: new Date().toISOString(),
     };
@@ -90,6 +93,12 @@ export class K8sWatcher extends EventEmitter implements ClusterSource {
     this.startStream('namespaces', (phase, obj) => this.onNamespace(phase, obj));
     this.startStream('services', (phase, obj) => this.onService(phase, obj));
     this.startStream('deployments', (phase, obj) => this.onDeployment(phase, obj));
+    this.startStream('secrets', (phase, obj) => this.onSecret(phase, obj));
+    // LIST secrets up-front so the first snapshot has them (the watch stream
+    // is async and won't have delivered events by the time getSnapshot() is
+    // called synchronously after start()). On completion, emit a new snapshot
+    // to update any already-connected clients.
+    void this.listSecrets();
 
     this.timers.push(
       setInterval(() => void this.pollMetrics(), METRICS_INTERVAL_MS),
@@ -242,6 +251,36 @@ export class K8sWatcher extends EventEmitter implements ClusterSource {
     };
     this.deployments.set(uid, dep);
     emitMessage(this, { type: 'DEPLOYMENT_UPDATED', payload: dep, timestamp: Date.now() });
+  }
+
+  private onSecret(phase: string, obj: any): void {
+    const uid = obj?.metadata?.uid;
+    if (!uid) return;
+    if (phase === 'DELETED') {
+      this.secrets.delete(uid);
+      return;
+    }
+    this.secrets.set(uid, mapSecret(obj));
+  }
+
+  private async listSecrets(): Promise<void> {
+    try {
+      const api = this.kc.makeApiClient(k8s.CoreV1Api);
+      const resp = await api.listSecretForAllNamespaces();
+      if (this.stopped) return;
+      for (const item of resp.body.items) {
+        const uid = item.metadata?.uid;
+        if (uid) this.secrets.set(uid, mapSecret(item));
+      }
+      // Push an updated snapshot so already-connected clients get the secrets.
+      emitMessage(this, {
+        type: 'CLUSTER_SNAPSHOT',
+        payload: this.getSnapshot(),
+        timestamp: Date.now(),
+      });
+    } catch {
+      // RBAC may not permit listing secrets — skip silently.
+    }
   }
 
   // --- Metrics -----------------------------------------------------------
@@ -487,6 +526,17 @@ function mapPodHealth(obj: any): PodHealth {
   }
   if (phase === 'Running') return 'Running';
   return 'Unknown';
+}
+
+function mapSecret(obj: any): Secret {
+  return {
+    uid: obj.metadata?.uid ?? obj.metadata.uid,
+    name: obj.metadata?.name ?? '',
+    namespace: obj.metadata?.namespace ?? 'default',
+    labels: obj.metadata?.labels ?? {},
+    keys: Object.keys(obj.data ?? {}),
+    type: obj.type ?? 'Opaque',
+  };
 }
 
 function mapNode(obj: any, podCount: number): KubeNode {

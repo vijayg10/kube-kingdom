@@ -11,8 +11,6 @@ const COVER_VARIANTS = [
   '/models/nature/Bush_Common_Flowers.gltf',
   '/models/nature/Plant_1.gltf',
   '/models/nature/Plant_1_Big.gltf',
-  '/models/nature/Plant_7.gltf',
-  '/models/nature/Plant_7_Big.gltf',
 ];
 
 COVER_VARIANTS.forEach((url) => useGLTF.preload(url));

@@ -24,3 +24,47 @@ canvas {
   display: block;
   touch-action: none;
 }
+
+@keyframes kk-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes kk-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%       { opacity: 1; }
+}
+
+.kk-loading-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.4rem;
+  background: #7ac0e8;
+  z-index: 50;
+  transition: opacity 0.6s ease;
+}
+
+.kk-loading-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.kk-loading-ring {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 5px solid rgba(232, 217, 181, 0.25);
+  border-top-color: #e8d9b5;
+  animation: kk-spin 0.9s linear infinite;
+}
+
+.kk-loading-text {
+  font-family: 'Cinzel', 'Times New Roman', serif;
+  font-size: 1rem;
+  color: #e8d9b5;
+  letter-spacing: 0.12em;
+  animation: kk-pulse 1.8s ease-in-out infinite;
+}

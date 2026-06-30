@@ -363,8 +363,12 @@ export function generateCityLayout(state: ClusterState): CityLayout {
   for (const sec of state.secrets) {
     const d = districtByNs.get(sec.namespace) ?? districts[0];
     if (!d) continue;
+    // Place secrets in a ring just outside the house perimeter so they read
+    // as guarded vaults on the district boundary rather than mixed in with pods.
+    const a = (hashString(sec.uid + ':angle') % 360) * (Math.PI / 180);
     const pos = clampInsideIsland(
-      stableDiskPosition(sec.uid + ':ext', d.center, d.radius * 1.08), d.center, polyFor(sec.namespace), 2.5,
+      v3(d.center.x + Math.cos(a) * (d.radius + 5), 0, d.center.z + Math.sin(a) * (d.radius + 5)),
+      d.center, polyFor(sec.namespace), 2,
     );
     buildings.push({
       resourceId: sec.uid,
