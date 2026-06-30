@@ -32,3 +32,6 @@ Thumbs.db
 *-IGNORE
 
 .playwright-mcp/
+
+kubeconfig_sample.yaml
+

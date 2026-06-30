@@ -64,6 +64,7 @@ export class K8sWatcher extends EventEmitter implements ClusterSource {
   private requests: Array<{ abort(): void }> = [];
   private timers: Array<ReturnType<typeof setInterval>> = [];
   private stopped = false;
+  private streamRetries = new Map<string, number>();
 
   private escalated = false;
 
